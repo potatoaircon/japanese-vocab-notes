@@ -7,6 +7,7 @@ import { needsChinese, translateJapanese } from './translate.js';
 import {
   COVER_COLORS,
   closeLineMenus,
+  closePageJump,
   renderNotebook,
   renderShelf,
   syncNoteDot,
@@ -618,7 +619,7 @@ function render() {
         onStartPractice: startPractice,
         onStartFocus: startFocus,
         onExitStudy: exitStudy,
-        onClearPractice: confirmClearPractice,
+        onClearPractice: clearCurrentPractice,
         onAnswer: persistPracticeAnswers,
         onRetry: retryPractice,
         onReview: reviewWrong,
@@ -629,6 +630,7 @@ function render() {
         },
         onExport: exportOpenNotebook,
         onAppend: openAppendForCurrent,
+        onJump: jumpToPage,
       });
       if (!state.focusSelector && !state.focusSlot && enteredNotebook) state.focusSelector = '#notebook-title';
     }
@@ -1045,6 +1047,21 @@ function renderShelfView(root, freshId) {
   });
 }
 
+function jumpToPage(pageNumber) {
+  if (state.view !== 'notebook' || state.study?.kind === 'focus') return;
+  flushLineEdits();
+  const total = pageLimitFor(getWordsByNotebook(state.notebookId));
+  if (!Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > total) return;
+  const view = spreadFor(pageNumber, total, { compact: isCompact() });
+  const shown = spreadFor(state.page, total, { compact: isCompact() }).current;
+  if (view.current === shown) return;
+  state.turn = view.current > shown ? 'next' : 'prev';
+  state.page = view.current;
+  const hash = notebookHash(state.notebookId, view.current);
+  if (location.hash !== hash) history.replaceState(null, '', hash);
+  render();
+}
+
 function step(direction) {
   if (state.view !== 'notebook') return;
   if (state.study?.kind === 'focus') {
@@ -1273,27 +1290,6 @@ function exitStudy() {
   state.focusDraft = '';
   state.skipSnapshot = true;
   render();
-}
-
-function confirmClearPractice() {
-  const body = el('div');
-  body.append(el('p', 'modal-text', 'このノートの練習回答をすべて消去します。'));
-  body.append(el('p', 'modal-text', '単語やマーカーの記録は削除されません。'));
-  openModal({
-    title: '回答をクリアしますか？',
-    body,
-    actions: [
-      { label: 'キャンセル', className: 'btn btn-ghost', onClick: () => closeModal() },
-      {
-        label: 'クリアする',
-        className: 'btn btn-primary',
-        onClick: () => {
-          closeModal({ restore: false });
-          clearCurrentPractice();
-        },
-      },
-    ],
-  });
 }
 
 function clearCurrentPractice() {
@@ -1891,8 +1887,13 @@ function bindKeys() {
     if (document.activeElement?.id === 'notebook-title' && !(target instanceof Element && target.closest('#notebook-title'))) {
       document.activeElement.blur();
     }
+    if (target instanceof Element && target.closest('.page-jump, .pager-jump')) {
+      closeLineMenus();
+      return;
+    }
     if (target instanceof Element && target.closest('.row-more, .row-popover, .note-popover, .note-dot, .note-tip')) return;
     closeLineMenus();
+    closePageJump();
   });
   window.addEventListener('pagehide', () => {
     flushLineEdits();

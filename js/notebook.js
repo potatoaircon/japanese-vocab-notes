@@ -203,6 +203,7 @@ export function renderNotebook(container, options) {
   const view = spreadFor(page, pageLimit || pageCount(words), { compact });
   closeLineMenus();
   closeGlossPop();
+  closePageJump();
 
   const screen = el('section', 'notebook-screen');
   const toolbar = el('div', 'notebook-toolbar');
@@ -240,7 +241,7 @@ export function renderNotebook(container, options) {
     tools.append(backStudy);
     if (focusing && !study.finished) tools.append(translationButton(study.script === 'zh'));
     if (studying && !showResult) {
-      const clearPractice = el('button', 'btn btn-primary', '回答をクリア');
+      const clearPractice = el('button', 'btn btn-primary', '書き直す');
       clearPractice.type = 'button';
       clearPractice.addEventListener('click', () => onClearPractice?.());
       tools.append(clearPractice);
@@ -324,12 +325,27 @@ export function renderNotebook(container, options) {
   prev.disabled = focusQuestions ? study.index <= 0 : !view.hasPrev;
   prev.addEventListener('click', () => onStep('prev'));
 
-  const status = el('p', 'pager-status');
   const visible = view.pages.filter((pageNumber, index) => !(compact && index > 0));
-  status.textContent = focusQuestions
+  const statusLabel = focusQuestions
     ? `${study.index + 1} / ${study.wordIds.length}`
     : (visible.length > 1 ? `${visible[0]}–${visible[1]}` : String(visible[0]));
-  status.setAttribute('aria-hidden', 'true');
+  const status = el(focusQuestions ? 'p' : 'button', focusQuestions ? 'pager-status' : 'pager-status pager-jump', statusLabel);
+  if (focusQuestions) {
+    status.setAttribute('aria-hidden', 'true');
+  } else {
+    status.type = 'button';
+    status.setAttribute('aria-haspopup', 'dialog');
+    status.setAttribute('aria-expanded', 'false');
+    status.setAttribute('aria-label', `ページへ移動。現在${statusLabel}`);
+    const totalPages = pageLimit || pageCount(words);
+    status.addEventListener('click', () => {
+      if (pageJump?.isConnected) {
+        closePageJump();
+        return;
+      }
+      openPageJump(status, totalPages, options.onJump);
+    });
+  }
 
   const next = el('button', 'btn btn-ghost', focusQuestions ? '次の問題' : '次のページ');
   next.type = 'button';
@@ -917,7 +933,10 @@ function fitNotebookFields(root) {
 }
 
 if (typeof window !== 'undefined') {
-  window.addEventListener('resize', () => scheduleNotebookFit());
+  window.addEventListener('resize', () => {
+    scheduleNotebookFit();
+    if (pageJump?.isConnected && pageJumpAnchor?.isConnected) placePageJump(pageJump, pageJumpAnchor);
+  });
 }
 
 function updateReadingHint(input) {
@@ -1297,8 +1316,93 @@ document.addEventListener('click', (event) => {
 });
 
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape') closeGlossPop();
+  if (event.key !== 'Escape') return;
+  closeGlossPop();
+  closePageJump();
 });
+
+let pageJump = null;
+let pageJumpAnchor = null;
+
+export function closePageJump() {
+  pageJump?.remove();
+  pageJump = null;
+  pageJumpAnchor = null;
+  document.querySelectorAll('.pager-jump[aria-expanded="true"]').forEach((button) => {
+    button.setAttribute('aria-expanded', 'false');
+  });
+}
+
+function openPageJump(anchor, total, onJump) {
+  closePageJump();
+  const pop = el('div', 'page-jump');
+  pop.setAttribute('role', 'dialog');
+  pop.setAttribute('aria-label', 'ページへ移動');
+  const title = el('p', 'page-jump-title hand', 'ページへ移動');
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.inputMode = 'numeric';
+  input.enterKeyHint = 'go';
+  input.autocomplete = 'off';
+  input.spellcheck = false;
+  input.className = 'page-jump-input';
+  input.setAttribute('aria-label', 'ページ番号');
+  const hint = el('p', 'page-jump-total', `全${total}ページ`);
+  const error = el('p', 'page-jump-error');
+  error.hidden = true;
+  const actions = el('div', 'page-jump-actions');
+  const cancel = el('button', 'btn btn-ghost', 'キャンセル');
+  cancel.type = 'button';
+  const go = el('button', 'btn btn-primary', '移動');
+  go.type = 'button';
+  const submit = () => {
+    const text = input.value.trim();
+    const page = Number(text);
+    if (!/^[1-9]\d*$/.test(text) || page > total) {
+      error.hidden = false;
+      error.textContent = `1〜${total}のページを入力してください`;
+      input.focus();
+      return;
+    }
+    closePageJump();
+    onJump?.(page);
+  };
+  cancel.addEventListener('click', () => closePageJump());
+  go.addEventListener('click', submit);
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      event.stopPropagation();
+      submit();
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      closePageJump();
+    }
+  });
+  actions.append(cancel, go);
+  pop.append(title, input, hint, error, actions);
+  document.body.append(pop);
+  pageJump = pop;
+  pageJumpAnchor = anchor;
+  anchor.setAttribute('aria-expanded', 'true');
+  placePageJump(pop, anchor);
+  input.focus();
+}
+
+function placePageJump(pop, anchor) {
+  const rect = anchor.getBoundingClientRect();
+  const margin = 8;
+  const width = pop.offsetWidth;
+  const height = pop.offsetHeight;
+  let left = rect.left + (rect.width - width) / 2;
+  let top = rect.top - height - margin;
+  if (top < margin) top = rect.bottom + margin;
+  left = Math.max(margin, Math.min(left, window.innerWidth - width - margin));
+  top = Math.max(margin, Math.min(top, window.innerHeight - height - margin));
+  pop.style.left = `${Math.round(left)}px`;
+  pop.style.top = `${Math.round(top)}px`;
+}
 
 function bindPenTarget(node, word, pen, onHighlight, field) {
   node.addEventListener('click', () => {
