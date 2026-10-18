@@ -24,6 +24,8 @@ let hydrating = false;
 let persistenceWarning = false;
 let cloudWarning = false;
 let pushTimer = 0;
+let pushRunning = false;
+let pushAgain = false;
 
 export function subscribe(listener) {
   listeners.add(listener);
@@ -528,15 +530,81 @@ function persistLocal() {
 
 function persist() {
   persistLocal();
+  scheduleCloudPush();
+}
+
+function scheduleCloudPush(delay = 500) {
   if (hydrating || !userId || !memory) return;
   clearTimeout(pushTimer);
-  const snapshot = memory;
+  pushTimer = setTimeout(() => enqueueCloudPush(), delay);
+}
+
+export function flushCloudPush() {
+  if (hydrating || !userId || !memory) return;
+  clearTimeout(pushTimer);
+  enqueueCloudPush();
+}
+
+function enqueueCloudPush() {
+  if (hydrating || !userId || !memory) return;
+  if (pushRunning) {
+    pushAgain = true;
+    return;
+  }
+  pushRunning = true;
+  pushAgain = false;
   const uid = userId;
-  pushTimer = setTimeout(() => {
-    pushUserState(uid, snapshot).then((result) => {
-      cloudWarning = !result.ok;
+  const snapshot = normalizeState(JSON.parse(JSON.stringify(memory)));
+  pushUserState(uid, snapshot).then((result) => {
+    if (uid === userId) cloudWarning = !result.ok;
+  }).catch(() => {
+    if (uid === userId) cloudWarning = true;
+  }).finally(() => {
+    pushRunning = false;
+    if (!pushAgain) return;
+    pushAgain = false;
+    enqueueCloudPush();
+  });
+}
+
+function recordTime(item) {
+  return String(item?.updatedAt || item?.createdAt || '');
+}
+
+export function mergeStoredState(remote, local) {
+  const remoteState = normalizeState(remote);
+  if (!local) return { state: remoteState, localNewer: false };
+  const localState = normalizeState(local);
+  let localNewer = false;
+  const pickLists = (remoteList, localList) => {
+    const remoteById = new Map(remoteList.map((item) => [item.id, item]));
+    const localById = new Map(localList.map((item) => [item.id, item]));
+    const merged = [];
+    new Set([...remoteById.keys(), ...localById.keys()]).forEach((id) => {
+      const remoteItem = remoteById.get(id);
+      const localItem = localById.get(id);
+      if (remoteItem && localItem) {
+        if (recordTime(localItem) > recordTime(remoteItem)) {
+          merged.push(localItem);
+          localNewer = true;
+        } else merged.push(remoteItem);
+        return;
+      }
+      if (localItem) localNewer = true;
+      merged.push(localItem || remoteItem);
     });
-  }, 500);
+    return merged;
+  };
+  const state = normalizeState({
+    version: 1,
+    starterWordsVersion: Math.max(remoteState.starterWordsVersion, localState.starterWordsVersion),
+    importedBatches: [...remoteState.importedBatches, ...localState.importedBatches],
+    completedImports: [...remoteState.completedImports, ...localState.completedImports],
+    notebooks: pickLists(remoteState.notebooks, localState.notebooks),
+    words: pickLists(remoteState.words, localState.words),
+    practiceLogs: pickLists(remoteState.practiceLogs, localState.practiceLogs),
+  });
+  return { localNewer, state };
 }
 
 function loadCachedState() {
@@ -603,9 +671,14 @@ export async function ready() {
   }
   hydrating = true;
   const remote = await pullUserState(userId);
+  const cached = loadCachedState();
   if (remote?.ok) {
-    memory = normalizeState(remote.state);
+    const merged = mergeStoredState(remote.state, cached);
+    memory = merged.state;
     persistLocal();
+    hydrating = false;
+    if (merged.localNewer) scheduleCloudPush(0);
+    return;
   } else if (remote?.missing) {
     memory = loadCachedState() || emptyState();
   } else {

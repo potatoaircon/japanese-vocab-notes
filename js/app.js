@@ -25,6 +25,7 @@ import {
   commitImportedState,
   hasCloudWarning,
   hasPersistenceWarning,
+  flushCloudPush,
   pauseCloudPush,
   readSession,
   resumeCloudPush,
@@ -1928,6 +1929,7 @@ function bindKeys() {
     flushLineEdits();
     flushGlossEdits();
     snapshotPracticeFields();
+    flushCloudPush();
   });
   document.addEventListener('keydown', (event) => {
     if (state.view !== 'notebook') return;

@@ -66,6 +66,15 @@ async function commitOps(mod, db, ops) {
 
 export async function pushUserState(uid, state) {
   if (!uid || !state) return { ok: false };
+  const notebookItems = (state.notebooks || []).map((item) => ({ ...item }));
+  const wordItems = (state.words || []).map((item) => ({ ...item }));
+  const logItems = (state.practiceLogs || []).map((item) => ({ ...item }));
+  const meta = {
+    starterWordsVersion: state.starterWordsVersion || 0,
+    importedBatches: [...(state.importedBatches || [])],
+    completedImports: [...(state.completedImports || [])],
+    updatedAt: new Date().toISOString(),
+  };
   try {
     const store = await api();
     if (!store) return { ok: false };
@@ -78,19 +87,19 @@ export async function pushUserState(uid, state) {
       mod.getDocs(words),
       mod.getDocs(logs),
     ]);
-    const keepNotebooks = new Set(state.notebooks.map((item) => item.id));
-    const keepWords = new Set(state.words.map((item) => item.id));
-    const keepLogs = new Set(state.practiceLogs.map((item) => item.id));
+    const keepNotebooks = new Set(notebookItems.map((item) => item.id));
+    const keepWords = new Set(wordItems.map((item) => item.id));
+    const keepLogs = new Set(logItems.map((item) => item.id));
     const ops = [];
-    state.notebooks.forEach((item) => {
+    notebookItems.forEach((item) => {
       const { id, ...data } = item;
       ops.push({ type: 'set', ref: mod.doc(notebooks, id), data });
     });
-    state.words.forEach((item) => {
+    wordItems.forEach((item) => {
       const { id, ...data } = item;
       ops.push({ type: 'set', ref: mod.doc(words, id), data });
     });
-    state.practiceLogs.forEach((item) => {
+    logItems.forEach((item) => {
       const { id, ...data } = item;
       ops.push({ type: 'set', ref: mod.doc(logs, id), data });
     });
@@ -106,12 +115,7 @@ export async function pushUserState(uid, state) {
     ops.push({
       type: 'set',
       ref: mod.doc(db, 'users', uid, 'private', 'state'),
-      data: {
-        starterWordsVersion: state.starterWordsVersion || 0,
-        importedBatches: state.importedBatches || [],
-        completedImports: state.completedImports || [],
-        updatedAt: new Date().toISOString(),
-      },
+      data: meta,
     });
     await commitOps(mod, db, ops);
     return { ok: true };
