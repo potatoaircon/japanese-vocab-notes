@@ -1881,6 +1881,35 @@ function bindChrome() {
   });
 }
 
+function typingCaret(target) {
+  if (!(target instanceof HTMLInputElement) && !(target instanceof HTMLTextAreaElement)) return null;
+  const caret = { start: target.selectionStart, end: target.selectionEnd };
+  if (target.dataset.wordInput) return { ...caret, kind: 'answer', id: target.dataset.wordInput };
+  if (target.hasAttribute('data-focus-input')) return { ...caret, kind: 'focus' };
+  if (target.classList.contains('gloss-input')) {
+    const slot = target.closest('[data-slot]')?.dataset.slot;
+    if (!slot) return null;
+    return { ...caret, kind: 'gloss', slot, field: target.dataset.field || 'translation' };
+  }
+  return null;
+}
+
+function restoreTypingCaret(saved) {
+  if (!saved) return;
+  let input = null;
+  if (saved.kind === 'answer') input = document.querySelector(`[data-word-input="${CSS.escape(saved.id)}"]`);
+  else if (saved.kind === 'focus') input = document.querySelector('[data-focus-input]');
+  else if (saved.kind === 'gloss') input = document.querySelector(`[data-slot="${CSS.escape(saved.slot)}"] [data-field="${CSS.escape(saved.field)}"]`);
+  if (!(input instanceof HTMLInputElement) && !(input instanceof HTMLTextAreaElement)) return;
+  input.focus({ preventScroll: true, focusVisible: false });
+  const end = input.value.length;
+  try {
+    input.setSelectionRange(Math.min(saved.start ?? end, end), Math.min(saved.end ?? end, end));
+  } catch {
+    /* 組字中は選択範囲を戻せない。 */
+  }
+}
+
 function bindKeys() {
   document.addEventListener('pointerdown', (event) => {
     const target = event.target;
@@ -1903,14 +1932,18 @@ function bindKeys() {
   document.addEventListener('keydown', (event) => {
     if (state.view !== 'notebook') return;
     if (document.body.classList.contains('modal-open')) return;
-    const target = event.target;
-    if (target instanceof Element && target.closest('input, textarea, select, [contenteditable="true"]')) return;
     if (event.altKey || event.metaKey || event.ctrlKey) return;
-    if (event.code === 'KeyP' && event.shiftKey && !event.repeat) {
+    if (event.code === 'KeyP' && event.shiftKey) {
       event.preventDefault();
+      if (event.repeat) return;
+      const caret = typingCaret(event.target);
       togglePen();
+      restoreTypingCaret(caret);
+      if (caret) queueMicrotask(() => restoreTypingCaret(caret));
       return;
     }
+    const target = event.target;
+    if (target instanceof Element && target.closest('input, textarea, select, [contenteditable="true"]')) return;
     if (event.key === 'ArrowRight') {
       event.preventDefault();
       step('next');
