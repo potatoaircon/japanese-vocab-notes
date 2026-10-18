@@ -35,6 +35,12 @@ import {
   updateWord,
 } from './storage.js';
 import { judgeAnswer } from './practice.js';
+import {
+  clearPracticeAnswers,
+  forgetPracticeAnswer,
+  loadPracticeAnswers,
+  savePracticeAnswers,
+} from './practice-answers.js';
 import { buildExportFile, inspectImportFile, planCsvImport, planJsonAppend } from './transfer.js';
 import {
   PAGE_SIZE,
@@ -150,8 +156,15 @@ function snapshotPracticeFields() {
   }
   document.querySelectorAll('[data-word-input]').forEach((input) => {
     const current = state.answers[input.dataset.wordInput] || {};
-    state.answers[input.dataset.wordInput] = { ...current, value: input.value };
+    const value = input.value;
+    const same = current.value === value;
+    state.answers[input.dataset.wordInput] = {
+      value,
+      status: same ? (current.status || '') : '',
+      message: same ? (current.message || '') : '',
+    };
   });
+  if (state.study?.kind === 'practice') persistPracticeAnswers();
   const focusInput = document.querySelector('[data-focus-input]');
   if (focusInput) state.focusDraft = focusInput.value;
 }
@@ -605,7 +618,8 @@ function render() {
         onStartPractice: startPractice,
         onStartFocus: startFocus,
         onExitStudy: exitStudy,
-        onFinishPractice: finishPractice,
+        onClearPractice: confirmClearPractice,
+        onAnswer: persistPracticeAnswers,
         onRetry: retryPractice,
         onReview: reviewWrong,
         onFocusCorrect: focusCorrect,
@@ -1196,11 +1210,11 @@ function beginStudy(kind, script, { fromCurrentPage = false } = {}) {
     });
     return;
   }
-  state.answers = {};
   state.revealed = {};
   state.showResult = false;
   state.focusDraft = '';
   if (kind === 'focus') {
+    state.answers = {};
     const index = fromCurrentPage ? focusStartIndex(stored, words) : 0;
     state.study = {
       kind: 'focus',
@@ -1217,6 +1231,7 @@ function beginStudy(kind, script, { fromCurrentPage = false } = {}) {
     state.skipSnapshot = true;
     rememberNotebookPage(focusPageOf(words[index].id, stored));
   } else {
+    state.answers = loadPracticeAnswers(sessionUserId, state.notebookId);
     state.study = { kind: 'practice', reviewIds: null, script };
   }
   render();
@@ -1250,12 +1265,50 @@ function focusWrong() {
 }
 
 function exitStudy() {
+  snapshotPracticeFields();
   state.study = null;
   state.answers = {};
   state.revealed = {};
   state.showResult = false;
   state.focusDraft = '';
+  state.skipSnapshot = true;
   render();
+}
+
+function confirmClearPractice() {
+  const body = el('div');
+  body.append(el('p', 'modal-text', 'このノートの練習回答をすべて消去します。'));
+  body.append(el('p', 'modal-text', '単語やマーカーの記録は削除されません。'));
+  openModal({
+    title: '回答をクリアしますか？',
+    body,
+    actions: [
+      { label: 'キャンセル', className: 'btn btn-ghost', onClick: () => closeModal() },
+      {
+        label: 'クリアする',
+        className: 'btn btn-primary',
+        onClick: () => {
+          closeModal({ restore: false });
+          clearCurrentPractice();
+        },
+      },
+    ],
+  });
+}
+
+function clearCurrentPractice() {
+  const page = state.page;
+  state.skipSnapshot = true;
+  state.answers = {};
+  state.revealed = {};
+  clearPracticeAnswers(sessionUserId, state.notebookId);
+  state.page = page;
+  render();
+}
+
+function persistPracticeAnswers() {
+  if (!sessionUserId || !state.notebookId || state.study?.kind !== 'practice') return;
+  savePracticeAnswers(sessionUserId, state.notebookId, state.answers);
 }
 
 function finishPractice() {
@@ -1318,12 +1371,14 @@ function syncFromHash() {
   const route = parseHash(location.hash);
   const nextId = route.view === 'notebook' ? route.notebookId : null;
   if (nextId !== state.notebookId) {
+    snapshotPracticeFields();
     state.study = null;
     state.answers = {};
     state.revealed = {};
     state.showResult = false;
     state.focusDraft = '';
     state.pen.active = false;
+    state.skipSnapshot = true;
   }
   if (route.view === 'notebook') {
     const notebook = getNotebook(route.notebookId);
@@ -1492,7 +1547,10 @@ function confirmDeleteLine(slot) {
         onClick: async () => {
           const result = await deleteWord(word.id);
           if (!result.ok) return;
+          snapshotPracticeFields();
           delete state.answers[word.id];
+          forgetPracticeAnswer(sessionUserId, state.notebookId, word.id);
+          state.skipSnapshot = true;
           closeModal({ restore: false });
           const words = getWordsByNotebook(state.notebookId);
           const limit = editablePageLimit(words, { compact: isCompact() });
@@ -1698,6 +1756,7 @@ function confirmDelete(notebook) {
         onClick: async () => {
           const result = await deleteNotebook(notebook.id);
           if (!result.ok) return;
+          clearPracticeAnswers(sessionUserId, notebook.id);
           closeModal({ restore: false });
           state.focusSelector = '#add-notebook';
           render();
@@ -1806,7 +1865,9 @@ async function adoptUser(user) {
   if (switching) {
     flushLineEdits();
     flushGlossEdits();
+    snapshotPracticeFields();
     resetViewState();
+    state.skipSnapshot = true;
   }
   sessionUserId = next;
   setActiveUser(next);
@@ -1836,6 +1897,7 @@ function bindKeys() {
   window.addEventListener('pagehide', () => {
     flushLineEdits();
     flushGlossEdits();
+    snapshotPracticeFields();
   });
   document.addEventListener('keydown', (event) => {
     if (state.view !== 'notebook') return;

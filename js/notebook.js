@@ -189,7 +189,7 @@ export function renderNotebook(container, options) {
     onStartPractice,
     onStartFocus,
     onExitStudy,
-    onFinishPractice,
+    onClearPractice,
     onRetry,
     onReview,
     onFocusCorrect,
@@ -202,6 +202,7 @@ export function renderNotebook(container, options) {
   const focusing = study?.kind === 'focus';
   const view = spreadFor(page, pageLimit || pageCount(words), { compact });
   closeLineMenus();
+  closeGlossPop();
 
   const screen = el('section', 'notebook-screen');
   const toolbar = el('div', 'notebook-toolbar');
@@ -239,10 +240,10 @@ export function renderNotebook(container, options) {
     tools.append(backStudy);
     if (focusing && !study.finished) tools.append(translationButton(study.script === 'zh'));
     if (studying && !showResult) {
-      const done = el('button', 'btn btn-primary', 'できた');
-      done.type = 'button';
-      done.addEventListener('click', onFinishPractice);
-      tools.append(done);
+      const clearPractice = el('button', 'btn btn-primary', '回答をクリア');
+      clearPractice.type = 'button';
+      clearPractice.addEventListener('click', () => onClearPractice?.());
+      tools.append(clearPractice);
     }
   } else {
     const translate = el('button', 'btn btn-ghost', '自動翻訳');
@@ -309,6 +310,7 @@ export function renderNotebook(container, options) {
         onSaveNote,
         pageLimit,
         study,
+        onAnswer: options.onAnswer,
       }));
     });
     book.append(spread);
@@ -464,12 +466,13 @@ function renderWord(word, options) {
   } else {
     kanji.append(markNode(word.kanji, fieldHighlight(word, 'kanji'), fresh, inkVariant(word.id, 'kanji')));
     bindPenTarget(kanji, word, pen, onHighlight, 'kanji');
+    if (studying && script === 'hiragana') bindGlossToggle(kanji, word, pen);
   }
 
   const reading = el('span', 'word-reading hand');
   reading.translate = false;
   if (studying) {
-    reading.append(renderAnswerField(word, answers, notebook, script));
+    reading.append(renderAnswerField(word, answers, notebook, script, options.onAnswer));
   } else {
     reading.append(markNode(word.hiragana, fieldHighlight(word, 'reading'), fresh, inkVariant(word.id, 'reading')));
     bindPenTarget(reading, word, pen, onHighlight, 'reading');
@@ -1183,6 +1186,120 @@ function openNotePopover(anchor, slot, options) {
   area.focus();
 }
 
+let glossPop = null;
+
+function closeGlossPop() {
+  glossPop?.parentElement?.classList.remove('is-gloss-open');
+  glossPop?.remove();
+  glossPop = null;
+}
+
+function bindGlossToggle(node, word, pen) {
+  node.dataset.glossToggle = word.id;
+  node.addEventListener('mousedown', (event) => {
+    if (pen?.active) return;
+    event.preventDefault();
+  });
+  node.addEventListener('click', (event) => {
+    if (pen?.active) return;
+    event.stopPropagation();
+    const anchor = node.closest('.word-line') || node.closest('.focus-sheet');
+    const cover = anchor?.querySelector('.word-reading, .focus-input');
+    if (!anchor || !cover) return;
+    if (glossPop?.isConnected && glossPop.dataset.wordId === word.id) {
+      closeGlossPop();
+      return;
+    }
+    openGlossPop(anchor, cover, word);
+  });
+}
+
+function openGlossPop(anchor, cover, word) {
+  closeGlossPop();
+  const pop = el('div', 'gloss-pop');
+  pop.dataset.wordId = word.id;
+  pop.setAttribute('role', 'tooltip');
+  const text = String(word.translation || '').trim();
+  const label = el('span', 'gloss-pop-text vocab-translation', text || '訳がありません');
+  label.lang = 'zh-Hant';
+  pop.append(label);
+  anchor.classList.add('is-gloss-open');
+  anchor.append(pop);
+  placeGloss(pop, anchor, cover);
+  fitGloss(label);
+  pop.addEventListener('mousedown', (event) => event.preventDefault());
+  pop.addEventListener('click', (event) => event.stopPropagation());
+  glossPop = pop;
+  requestAnimationFrame(() => {
+    if (!label.isConnected) return;
+    fitGloss(label);
+  });
+}
+
+function placeGloss(pop, anchor, cover) {
+  const anchorRect = anchor.getBoundingClientRect();
+  const coverRect = cover.getBoundingClientRect();
+  const pageRect = (anchor.closest('.page') || anchor).getBoundingClientRect();
+  const maxRight = Math.min(pageRect.right, window.innerWidth) - 8;
+  const minLeft = Math.max(pageRect.left, 8);
+  let width = 175;
+  const room = maxRight - minLeft;
+  if (room < width) width = Math.max(112, Math.floor(room));
+  const tools = anchor.querySelector('.answer-tools');
+  const toolsLeft = tools ? tools.getBoundingClientRect().left - 4 : maxRight;
+  const limitRight = Math.min(maxRight, toolsLeft);
+  let left = anchor.classList.contains('focus-sheet')
+    ? coverRect.left + Math.max(0, (coverRect.width - width) / 2)
+    : coverRect.left;
+  if (left + width > limitRight) width = Math.max(112, Math.floor(limitRight - left));
+  if (left + width > maxRight) {
+    width = Math.max(112, Math.floor(maxRight - left));
+    if (left + width > maxRight) left = maxRight - width;
+  }
+  if (left < minLeft) left = minLeft;
+  const top = coverRect.top + (coverRect.height - 48) / 2;
+  pop.style.width = `${Math.round(width)}px`;
+  pop.style.left = `${Math.round(left - anchorRect.left)}px`;
+  pop.style.top = `${Math.round(top - anchorRect.top)}px`;
+}
+
+function fitGloss(node) {
+  const box = node.parentElement;
+  const style = getComputedStyle(box);
+  const pad = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+  const limit = Math.max(0, box.clientHeight - pad);
+  node.style.maxHeight = `${limit}px`;
+  node.style.overflow = 'hidden';
+  node.title = '';
+  node.classList.remove('is-scroll');
+  for (const size of [13, 12, 11]) {
+    node.style.fontSize = `${size}px`;
+    node.style.whiteSpace = 'nowrap';
+    if (node.scrollWidth <= node.clientWidth + 1) return;
+    node.style.whiteSpace = 'normal';
+    if (node.scrollHeight <= limit + 1) return;
+  }
+  node.style.fontSize = '11px';
+  node.style.whiteSpace = 'normal';
+  node.style.overflowY = 'auto';
+  node.classList.add('is-scroll');
+  node.title = node.textContent || '';
+}
+
+document.addEventListener('click', (event) => {
+  if (!glossPop?.isConnected) {
+    glossPop = null;
+    return;
+  }
+  if (glossPop.contains(event.target)) return;
+  if (event.target.closest?.('[data-gloss-toggle]')) return;
+  closeGlossPop();
+});
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') closeGlossPop();
+});
+
 function bindPenTarget(node, word, pen, onHighlight, field) {
   node.addEventListener('click', () => {
     if (!pen?.active || !pen.tool) return;
@@ -1191,7 +1308,7 @@ function bindPenTarget(node, word, pen, onHighlight, field) {
   });
 }
 
-function renderAnswerField(word, answers, notebook, script) {
+function renderAnswerField(word, answers, notebook, script, onAnswer) {
   const answerScript = script || (notebook?.type === 'katakana' ? 'katakana' : 'hiragana');
   const expected = answerScript === 'zh'
     ? (word.translation || '')
@@ -1213,12 +1330,12 @@ function renderAnswerField(word, answers, notebook, script) {
   const judge = el('span', 'judge');
   judge.setAttribute('aria-live', 'polite');
   field.append(input, judge);
-  bindAnswerInput(input, judge, word, answers, { expected, script: answerScript });
+  bindAnswerInput(input, judge, word, answers, { expected, script: answerScript, onAnswer });
   if (saved?.status) paintJudgement(input, judge, { status: saved.status, message: saved.message || '' });
   return field;
 }
 
-function bindAnswerInput(input, judge, word, answers, { expected, script }) {
+function bindAnswerInput(input, judge, word, answers, { expected, script, onAnswer }) {
   const ime = watchIme(input);
   let timer = 0;
   const run = (commit = false) => {
@@ -1233,6 +1350,7 @@ function bindAnswerInput(input, judge, word, answers, { expected, script }) {
         status: result.status === 'empty' ? '' : result.status,
         message: result.message || '',
       };
+      onAnswer?.();
     }
   };
   input.addEventListener('compositionstart', () => {
@@ -1250,6 +1368,10 @@ function bindAnswerInput(input, judge, word, answers, { expected, script }) {
     clearTimeout(timer);
     input.classList.remove('is-correct', 'is-incorrect');
     judge.textContent = '';
+    if (answers) {
+      answers[word.id] = { value: input.value, status: '', message: '' };
+      onAnswer?.();
+    }
     timer = setTimeout(run, 350);
   });
   input.addEventListener('keydown', (event) => {
@@ -1343,6 +1465,7 @@ function renderFocusSession({
     if (!pen?.active || !pen.tool || !word?.id) return;
     onHighlight?.(word.id, pen.tool, markField);
   });
+  if (script === 'hiragana' && word) bindGlossToggle(prompt, word, pen);
   kanji.append(prompt);
   if (script === 'hiragana') {
     const gloss = el('p', 'focus-gloss vocab-translation', word?.translation || '');

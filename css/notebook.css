@@ -313,7 +313,60 @@
 }
 
 .word-line.is-study {
+  position: relative;
   grid-template-columns: minmax(0, 1.15fr) minmax(0, 1.45fr) minmax(0, 0.62fr);
+}
+
+.word-line.is-gloss-open,
+.focus-sheet.is-gloss-open {
+  z-index: 4;
+}
+
+.word-line.is-study .word-kanji[data-gloss-toggle],
+.focus-prompt[data-gloss-toggle] {
+  cursor: pointer;
+}
+
+.is-pen-mode .word-kanji[data-gloss-toggle],
+.is-pen-mode .focus-prompt[data-gloss-toggle] {
+  cursor: inherit;
+}
+
+.gloss-pop {
+  position: absolute;
+  z-index: 5;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 175px;
+  height: 48px;
+  padding: 4px 8px;
+  border: 1px solid #efe6d8;
+  border-radius: 6px;
+  background: rgba(255, 252, 245, 0.96);
+  box-shadow: 0 1px 3px rgba(73, 68, 62, 0.08);
+  color: var(--ink);
+  pointer-events: auto;
+  overflow: hidden;
+}
+
+.gloss-pop-text {
+  display: block;
+  width: 100%;
+  max-height: 100%;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.25;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.gloss-pop-text.is-scroll {
+  align-self: stretch;
+  height: 100%;
+  overflow-y: auto;
 }
 
 .word-line .word-kanji { grid-column: 1; }
