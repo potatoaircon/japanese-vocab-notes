@@ -257,6 +257,11 @@ main {
   outline-offset: 2px;
 }
 
+#app-root:focus,
+#app-root:focus-visible {
+  outline: none;
+}
+
 ::selection {
   background: var(--yellow);
   color: var(--ink);
