@@ -327,11 +327,6 @@
   cursor: pointer;
 }
 
-.is-pen-mode .word-kanji[data-gloss-toggle],
-.is-pen-mode .focus-prompt[data-gloss-toggle] {
-  cursor: inherit;
-}
-
 .gloss-pop {
   position: absolute;
   z-index: 5;
@@ -618,10 +613,6 @@
   pointer-events: none;
 }
 
-.is-pen-mode .paper-input {
-  cursor: inherit;
-}
-
 .line-tools {
   display: flex;
   align-items: center;
@@ -733,12 +724,6 @@
   font-size: 13px;
   line-height: 1.5;
   white-space: pre-wrap;
-}
-
-.is-pen-mode .word-kanji,
-.is-pen-mode .word-line:not(:has(.reading-input)) .word-reading,
-.is-pen-mode .focus-prompt {
-  cursor: inherit;
 }
 
 .word-actions,
@@ -1134,6 +1119,17 @@
   cursor: var(--pen-cursor);
 }
 
+.notebook-screen.is-pen-mode .word-line .word-kanji,
+.notebook-screen.is-pen-mode .word-line .word-kanji *,
+.notebook-screen.is-pen-mode .word-line:not(:has(.reading-input)) .word-reading,
+.notebook-screen.is-pen-mode .word-line:not(:has(.reading-input)) .word-reading *,
+.notebook-screen.is-pen-mode .focus-prompt,
+.notebook-screen.is-pen-mode .focus-prompt *,
+.notebook-screen.is-pen-mode .practice-prompt,
+.notebook-screen.is-pen-mode .practice-prompt * {
+  cursor: var(--pen-cursor);
+}
+
 .pen-palette {
   position: absolute;
   top: calc(100% + 6px);
@@ -1206,10 +1202,6 @@
 .focus-prompt {
   display: inline-block;
   max-width: 100%;
-}
-
-.is-pen-mode .focus-prompt {
-  cursor: inherit;
 }
 
 .focus-gloss {
