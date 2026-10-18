@@ -1906,6 +1906,11 @@ function bindKeys() {
     const target = event.target;
     if (target instanceof Element && target.closest('input, textarea, select, [contenteditable="true"]')) return;
     if (event.altKey || event.metaKey || event.ctrlKey) return;
+    if (event.code === 'KeyP' && event.shiftKey && !event.repeat) {
+      event.preventDefault();
+      togglePen();
+      return;
+    }
     if (event.key === 'ArrowRight') {
       event.preventDefault();
       step('next');

@@ -219,7 +219,10 @@ export function renderNotebook(container, options) {
   const actions = el('div', 'toolbar-actions');
   actions.append(renderLock(notebook, onToggleLock), renderPen(pen, onTogglePen, onSelectPen));
   toolbar.append(back, heading, actions);
-  if (pen?.active) screen.classList.add('is-pen-mode');
+  if (pen?.active) {
+    screen.classList.add('is-pen-mode');
+    screen.dataset.pen = pen.tool === 'pink' || pen.tool === 'green' ? pen.tool : 'yellow';
+  }
 
   const tools = el('div', 'notebook-tools');
   const translationButton = (disabled = false) => {
