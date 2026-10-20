@@ -261,7 +261,7 @@ export function renderNotebook(container, options) {
     const focus = el('button', 'btn btn-ghost', '字卡練習');
     focus.type = 'button';
     focus.addEventListener('click', onStartFocus);
-    const marked = el('button', 'btn btn-ghost', '螢光筆練習');
+    const marked = el('button', 'btn btn-ghost', '蛍光ペン練習');
     marked.type = 'button';
     marked.addEventListener('click', onStartMarkedFocus);
     const status = el('p', 'tool-status');

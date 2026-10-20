@@ -16,6 +16,20 @@ const listeners = new Set();
 
 const ARCHIVE_KEY = 'jvn.local-demo.v1';
 const ARCHIVE_BACKUP_KEY = 'jvn.local-demo.v1.backup-20261016';
+const GUEST_KEY = 'jvn.guest.v1';
+const GUEST_NUMBERS_ID = 'nb-guest-numbers';
+const GUEST_NUMBERS = [
+  ['一', 'いち', '一'],
+  ['二', 'に', '二'],
+  ['三', 'さん', '三'],
+  ['四', 'し', '四'],
+  ['五', 'ご', '五'],
+  ['六', 'ろく', '六'],
+  ['七', 'しち', '七'],
+  ['八', 'はち', '八'],
+  ['九', 'きゅう', '九'],
+  ['十', 'じゅう', '十'],
+];
 
 let userId = '';
 let memory = null;
@@ -519,9 +533,11 @@ function emptyState() {
 }
 
 function persistLocal() {
-  if (!userId || !memory || !canUseStorage()) return;
+  if (!memory || !canUseStorage()) return;
+  const key = userId ? storageKey() : GUEST_KEY;
+  if (!key) return;
   try {
-    localStorage.setItem(storageKey(), JSON.stringify(memory));
+    localStorage.setItem(key, JSON.stringify(memory));
     persistenceWarning = false;
   } catch {
     persistenceWarning = true;
@@ -618,11 +634,63 @@ function loadCachedState() {
   }
 }
 
+function loadGuestState() {
+  if (!canUseStorage()) return null;
+  const raw = localStorage.getItem(GUEST_KEY);
+  if (!raw) return null;
+  try {
+    return normalizeState(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
+
+function seedGuestNumbers() {
+  const createdAt = '2026-10-21T00:00:00.000Z';
+  const words = GUEST_NUMBERS.map(([kanji, hiragana, translation], index) => cleanWord({
+    id: `guest-n${index + 1}`,
+    notebookId: GUEST_NUMBERS_ID,
+    kanji,
+    hiragana,
+    translation,
+    translationEdited: true,
+    readingEdited: true,
+    note: '',
+    highlight: null,
+    order: index,
+    createdAt,
+    updatedAt: createdAt,
+  })).filter(Boolean);
+  return normalizeState({
+    version: 1,
+    starterWordsVersion: 0,
+    importedBatches: [],
+    completedImports: [],
+    notebooks: [{
+      id: GUEST_NUMBERS_ID,
+      title: '数字',
+      color: 'lemon',
+      type: 'kanji',
+      autoLookup: false,
+      showTranslation: true,
+      locked: false,
+      createdAt,
+      updatedAt: createdAt,
+    }],
+    words,
+    practiceLogs: [],
+  });
+}
+
+function guestMemory() {
+  return loadGuestState() || seedGuestNumbers();
+}
+
 function load() {
   if (memory && memoryUser === userId) return memory;
   memoryUser = userId;
   if (!userId) {
-    memory = emptyState();
+    memory = guestMemory();
     return memory;
   }
   memory = loadCachedState() || emptyState();
@@ -666,7 +734,8 @@ export async function ready() {
   if (memory && memoryUser === userId) return;
   memoryUser = userId;
   if (!userId) {
-    memory = emptyState();
+    memory = guestMemory();
+    persistLocal();
     return;
   }
   hydrating = true;
@@ -697,9 +766,7 @@ function copyWord(word) {
 }
 
 function sessionState() {
-  const state = load();
-  if (!userId) return null;
-  return state;
+  return load();
 }
 
 export function getNotebooks() {

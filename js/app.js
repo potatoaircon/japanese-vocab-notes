@@ -1881,7 +1881,7 @@ function resetViewState() {
 }
 
 async function adoptUser(user) {
-  const next = user?.uid && !user.isDemo ? user.uid : '';
+  const next = user?.uid && !user.isDemo ? user.uid : 'guest';
   if (next === sessionUserId) return;
   const switching = sessionUserId !== null;
   if (switching) {
