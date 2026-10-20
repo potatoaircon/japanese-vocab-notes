@@ -619,6 +619,7 @@ function render() {
         pageLimit: pageLimitFor(allWords),
         onStartPractice: startPractice,
         onStartFocus: startFocus,
+        onStartMarkedFocus: startMarkedFocus,
         onExitStudy: exitStudy,
         onClearPractice: clearCurrentPractice,
         onAnswer: persistPracticeAnswers,
@@ -1172,12 +1173,26 @@ function startPractice() {
   beginStudy('practice', 'hiragana');
 }
 
+function hasHighlight(word) {
+  const kanji = word?.highlightKanji !== undefined ? word.highlightKanji : (word?.highlight || null);
+  const reading = word?.highlightReading !== undefined ? word.highlightReading : (word?.highlight || null);
+  return Boolean(kanji || reading);
+}
+
 function startFocus() {
   if (currentNotebook()?.type === 'katakana') {
     chooseStudy('focus', { fromCurrentPage: true });
     return;
   }
   beginStudy('focus', 'hiragana', { fromCurrentPage: true });
+}
+
+function startMarkedFocus() {
+  if (currentNotebook()?.type === 'katakana') {
+    chooseStudy('focus', { fromCurrentPage: true, markedOnly: true });
+    return;
+  }
+  beginStudy('focus', 'hiragana', { fromCurrentPage: true, markedOnly: true });
 }
 
 function toggleLock() {
@@ -1212,11 +1227,20 @@ function chooseStudy(kind, options = {}) {
   });
 }
 
-function beginStudy(kind, script, { fromCurrentPage = false } = {}) {
+function beginStudy(kind, script, { fromCurrentPage = false, markedOnly = false } = {}) {
   flushLineEdits();
   flushGlossEdits();
   const stored = getWordsByNotebook(state.notebookId);
-  const words = practiceWords(stored, script);
+  const source = markedOnly ? stored.filter(hasHighlight) : stored;
+  if (markedOnly && !source.length) {
+    openModal({
+      title: '練習',
+      body: '蛍光ペンの付いた単語がありません。',
+      actions: [{ label: 'わかった', className: 'btn btn-primary', onClick: () => closeModal() }],
+    });
+    return;
+  }
+  const words = practiceWords(source, script);
   if (!words.length) {
     const body = script === 'zh'
       ? '中国語の訳がある単語がありません。'
@@ -1237,6 +1261,7 @@ function beginStudy(kind, script, { fromCurrentPage = false } = {}) {
     state.study = {
       kind: 'focus',
       script,
+      markedOnly,
       wordIds: words.map((word) => word.id),
       wordsById: Object.fromEntries(words.map((word) => [word.id, word])),
       index,
@@ -1326,7 +1351,7 @@ function finishPractice() {
 function retryPractice() {
   if (state.study?.kind === 'focus') {
     const script = state.study.script === 'zh' || state.study.script === 'katakana' ? state.study.script : 'hiragana';
-    beginStudy('focus', script);
+    beginStudy('focus', script, { markedOnly: Boolean(state.study.markedOnly) });
     return;
   }
   state.skipSnapshot = true;

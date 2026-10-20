@@ -188,6 +188,7 @@ export function renderNotebook(container, options) {
     pageLimit,
     onStartPractice,
     onStartFocus,
+    onStartMarkedFocus,
     onExitStudy,
     onClearPractice,
     onRetry,
@@ -260,16 +261,21 @@ export function renderNotebook(container, options) {
     const focus = el('button', 'btn btn-ghost', '字卡練習');
     focus.type = 'button';
     focus.addEventListener('click', onStartFocus);
+    const marked = el('button', 'btn btn-ghost', '螢光筆練習');
+    marked.type = 'button';
+    marked.addEventListener('click', onStartMarkedFocus);
     const status = el('p', 'tool-status');
     status.id = 'tool-status';
     status.hidden = true;
+    const transfer = el('div', 'notebook-transfer');
     const exportNotebook = el('button', 'btn btn-ghost', '書き出す');
     exportNotebook.type = 'button';
     exportNotebook.addEventListener('click', () => onExport?.());
     const appendWords = el('button', 'btn btn-ghost', '単語を追加');
     appendWords.type = 'button';
     appendWords.addEventListener('click', () => onAppend?.());
-    tools.append(translationButton(), translate, practice, focus, exportNotebook, appendWords, status);
+    transfer.append(exportNotebook, appendWords);
+    tools.append(translationButton(), translate, practice, focus, marked, transfer, status);
   }
 
   const book = el('div', 'book');
