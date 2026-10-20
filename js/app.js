@@ -1881,8 +1881,9 @@ function resetViewState() {
 }
 
 async function adoptUser(user) {
-  const next = user?.uid && !user.isDemo ? user.uid : 'guest';
-  if (next === sessionUserId) return;
+  const accountId = user?.uid && !user.isDemo ? user.uid : '';
+  const practiceId = accountId || 'guest';
+  if (practiceId === sessionUserId) return;
   const switching = sessionUserId !== null;
   if (switching) {
     flushLineEdits();
@@ -1891,8 +1892,8 @@ async function adoptUser(user) {
     resetViewState();
     state.skipSnapshot = true;
   }
-  sessionUserId = next;
-  setActiveUser(next);
+  sessionUserId = practiceId;
+  setActiveUser(accountId);
   await ready();
   if (switching) render();
 }

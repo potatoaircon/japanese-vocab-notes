@@ -683,7 +683,25 @@ function seedGuestNumbers() {
 }
 
 function guestMemory() {
-  return loadGuestState() || seedGuestNumbers();
+  const cached = loadGuestState();
+  const seeded = seedGuestNumbers();
+  if (!cached) return seeded;
+  if (cached.notebooks.some((notebook) => notebook.id === GUEST_NUMBERS_ID)) return cached;
+  return normalizeState({
+    ...cached,
+    notebooks: [...cached.notebooks, ...seeded.notebooks],
+    words: [...cached.words, ...seeded.words],
+  });
+}
+
+function omitGuestBook(state) {
+  if (!state?.notebooks?.some((notebook) => notebook.id === GUEST_NUMBERS_ID)) return state;
+  return normalizeState({
+    ...state,
+    notebooks: state.notebooks.filter((notebook) => notebook.id !== GUEST_NUMBERS_ID),
+    words: state.words.filter((word) => word.notebookId !== GUEST_NUMBERS_ID),
+    practiceLogs: (state.practiceLogs || []).filter((log) => log.notebookId !== GUEST_NUMBERS_ID),
+  });
 }
 
 function load() {
@@ -743,16 +761,16 @@ export async function ready() {
   const cached = loadCachedState();
   if (remote?.ok) {
     const merged = mergeStoredState(remote.state, cached);
-    memory = merged.state;
+    memory = omitGuestBook(merged.state);
     persistLocal();
     hydrating = false;
     if (merged.localNewer) scheduleCloudPush(0);
     return;
   } else if (remote?.missing) {
-    memory = loadCachedState() || emptyState();
+    memory = omitGuestBook(loadCachedState() || emptyState());
   } else {
     cloudWarning = true;
-    memory = loadCachedState() || emptyState();
+    memory = omitGuestBook(loadCachedState() || emptyState());
   }
   hydrating = false;
 }
